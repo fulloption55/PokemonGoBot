@@ -6,11 +6,9 @@
  * For more information, refer to the LICENSE file in this repositories root directory
  */
 
-package ink.abb.pogo.scraper.util.map
+package ink.abb.pogo.scraper.util.data
 
-import com.pokegoapi.api.map.Map
-import com.pokegoapi.api.map.pokemon.CatchablePokemon
-
-fun Map.getCatchablePokemon(blacklist: Set<Long>): List<CatchablePokemon> {
-    return catchablePokemon.filter { !blacklist.contains(it.encounterId) }
-}
+data class LocationData(
+        val latitude: Double? = null,
+        val longitude: Double? = null
+)

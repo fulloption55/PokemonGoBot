@@ -1,3 +1,11 @@
+### Prerequisites (Remove this section if you want)
+Make sure you...
+
+* Have checked the FAQ if your question has not been answered there.
+* Have searched the existing issues if your question has not been asked here.
+* Post a FULL stacktrace and not only a part of it.
+* Fill in all the fields correctly, it helps us immensly if we get a complete image of your situation.
+
 **Description:**
 [Short description of the issue observed. If this is feature request you can modify the template as required.]
 
@@ -23,3 +31,6 @@
 
 **Java version:**
 [Full output of `java -version`]
+
+Leave this sentence in your issue as proof that you have read and used this template.
+

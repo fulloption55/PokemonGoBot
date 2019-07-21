@@ -12,17 +12,18 @@ import POGOProtos.Data.PokemonDataOuterClass
 import com.corundumstudio.socketio.Configuration
 import com.corundumstudio.socketio.SocketConfig
 import com.corundumstudio.socketio.SocketIOServer
-import com.pokegoapi.api.map.fort.Pokestop
-import com.pokegoapi.api.player.PlayerProfile
-import com.pokegoapi.google.common.geometry.S2LatLng
+import com.google.common.geometry.S2LatLng
+import ink.abb.pogo.api.cache.Pokestop
 import ink.abb.pogo.scraper.Context
 import ink.abb.pogo.scraper.requiredXp
 import ink.abb.pogo.scraper.util.Log
-import ink.abb.pogo.scraper.util.cachedInventories
-import ink.abb.pogo.scraper.util.inventory.size
+import ink.abb.pogo.scraper.util.data.PokemonData
+import ink.abb.pogo.scraper.util.pokemon.eggKmWalked
 import ink.abb.pogo.scraper.util.pokemon.getIvPercentage
 import ink.abb.pogo.scraper.util.pokemon.getStatsFormatted
 import io.netty.util.concurrent.Future
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 
 class SocketServer {
     private var ctx: Context? = null
@@ -51,23 +52,22 @@ class SocketServer {
         server?.addEventListener("goto", EventGoto::class.java) { client, data, ackRequest ->
             run {
                 if (data.lat != null && data.lng != null) {
-                    val coord = S2LatLng.fromRadians(data.lat!!, data.lng!!)
-                    coordinatesToGoTo.add(coord)
+                    coordinatesToGoTo.add(S2LatLng.fromDegrees(data.lat!!, data.lng!!))
                 }
             }
         }
 
         var startAttempt: Future<Void>? = null
         do {
-            Log.normal("Attempting to bind Socket Server to port ${port}")
+            Log.normal("Attempting to bind Socket Server to port $port")
             try {
                 startAttempt = server?.startAsync()?.syncUninterruptibly()
             } catch (e: Exception) {
-                Log.red("Failed to bind Socket Server to port ${port}; retrying in 5 seconds")
+                Log.red("Failed to bind Socket Server to port $port; retrying in 5 seconds")
                 Thread.sleep(5000)
             }
         } while (startAttempt == null)
-        Log.green("Bound Socket Server to port ${port}")
+        Log.green("Bound Socket Server to port $port")
     }
 
     fun stop() {
@@ -81,23 +81,23 @@ class SocketServer {
     fun sendProfile() {
         if (ctx != null) {
             val profile = EventProfile()
-            profile.username = ctx!!.api.playerProfile.playerData.username
-            profile.team = ctx!!.api.playerProfile.playerData.team.name
-            profile.stardust = ctx!!.api.playerProfile.currencies[PlayerProfile.Currency.STARDUST]
-            profile.level = ctx!!.api.playerProfile.stats.level
-            val curLevelXP = ctx!!.api.playerProfile.stats.experience - requiredXp[ctx!!.api.playerProfile.stats.level - 1]
+            profile.username = ctx!!.api.playerData.username
+            profile.team = ctx!!.api.playerData.team.name
+            profile.stardust = ctx!!.api.inventory.currencies.getOrPut("STARDUST", { AtomicInteger(0) }).get()
+            profile.level = ctx!!.api.inventory.playerStats.level
+            val curLevelXP = ctx!!.api.inventory.playerStats.experience - requiredXp[ctx!!.api.inventory.playerStats.level - 1]
             profile.levelXp = curLevelXP
-            val nextXP = if (ctx!!.api.playerProfile.stats.level == requiredXp.size) {
+            val nextXP = if (ctx!!.api.inventory.playerStats.level == requiredXp.size) {
                 curLevelXP
             } else {
-                (requiredXp[ctx!!.api.playerProfile.stats.level] - requiredXp[ctx!!.api.playerProfile.stats.level - 1]).toLong()
+                (requiredXp[ctx!!.api.inventory.playerStats.level] - requiredXp[ctx!!.api.inventory.playerStats.level - 1]).toLong()
             }
             val ratio = ((curLevelXP.toDouble() / nextXP.toDouble()) * 100).toInt()
             profile.levelRatio = ratio
-            profile.pokebank = ctx!!.api.cachedInventories.pokebank.pokemons.size
-            profile.pokebankMax = ctx!!.api.playerProfile.playerData.maxPokemonStorage
-            profile.items = ctx!!.api.cachedInventories.itemBag.size()
-            profile.itemsMax = ctx!!.api.playerProfile.playerData.maxItemStorage
+            profile.pokebank = ctx!!.api.inventory.pokemon.size
+            profile.pokebankMax = ctx!!.api.playerData.maxPokemonStorage
+            profile.items = ctx!!.api.inventory.size
+            profile.itemsMax = ctx!!.api.playerData.maxItemStorage
             server?.broadcastOperations?.sendEvent("profile", profile)
         }
     }
@@ -105,15 +105,9 @@ class SocketServer {
     fun sendPokebank() {
         if (ctx != null) {
             val pokebank = EventPokebank()
-            for (pokemon in ctx!!.api.cachedInventories.pokebank.pokemons) {
-                val pokemonObj = EventPokebank.Pokemon()
-                pokemonObj.id = pokemon.id
-                pokemonObj.pokemonId = pokemon.pokemonId.number
-                pokemonObj.name = pokemon.pokemonId.name
-                pokemonObj.cp = pokemon.cp
-                pokemonObj.iv = pokemon.getIvPercentage()
-                pokemonObj.stats = pokemon.getStatsFormatted()
-                pokebank.pokemon.add(pokemonObj)
+
+            for (pokemon in ctx!!.api.inventory.pokemon) {
+                pokebank.pokemon.add(PokemonData().buildFromPokemon(pokemon.value))
             }
             server?.broadcastOperations?.sendEvent("pokebank", pokebank)
         }
@@ -122,9 +116,9 @@ class SocketServer {
     fun sendPokestop(pokestop: Pokestop) {
         val pokestopObj = EventPokestop()
         pokestopObj.id = pokestop.id
-        pokestopObj.name = pokestop.details.name
-        pokestopObj.lat = pokestop.latitude
-        pokestopObj.lng = pokestop.longitude
+        pokestopObj.name = pokestop.name
+        pokestopObj.lat = pokestop.fortData.latitude
+        pokestopObj.lng = pokestop.fortData.longitude
         server?.broadcastOperations?.sendEvent("pokestop", pokestopObj)
     }
 
@@ -145,6 +139,15 @@ class SocketServer {
         newPokemon.cp = pokemon.cp
         newPokemon.iv = pokemon.getIvPercentage()
         newPokemon.stats = pokemon.getStatsFormatted()
+        newPokemon.individualStamina = pokemon.individualStamina
+        newPokemon.individualAttack = pokemon.individualAttack
+        newPokemon.individualDefense = pokemon.individualDefense
+        newPokemon.creationTimeMs = pokemon.creationTimeMs
+        newPokemon.move1 = pokemon.move1.name
+        newPokemon.move2 = pokemon.move2.name
+        newPokemon.deployedFortId = pokemon.deployedFortId
+        newPokemon.stamina = pokemon.stamina
+        newPokemon.maxStamina = pokemon.stamina
         server?.broadcastOperations?.sendEvent("newPokemon", newPokemon)
     }
 
@@ -164,10 +167,10 @@ class SocketServer {
     fun sendEggs() {
         if (ctx != null) {
             val eggs = EventEggs()
-            for (egg in ctx!!.api.cachedInventories.hatchery.eggs) {
+            for (egg in ctx!!.api.inventory.eggs) {
                 val eggObj = EventEggs.Egg()
-                // eggObj.distanceWalked = egg.eggKmWalked
-                eggObj.distanceTarget = egg.eggKmWalkedTarget
+                eggObj.distanceWalked = egg.value.pokemonData.eggKmWalked(ctx!!.api)
+                eggObj.distanceTarget = egg.value.pokemonData.eggKmWalkedTarget
                 eggs.eggs.add(eggObj)
             }
             server?.broadcastOperations?.sendEvent("eggs", eggs)
@@ -197,16 +200,7 @@ class SocketServer {
     }
 
     class EventPokebank {
-        var pokemon = mutableListOf<Pokemon>()
-
-        class Pokemon {
-            var id: Long? = null
-            var pokemonId: Int? = null
-            var name: String? = null
-            var cp: Int? = null
-            var iv: Int? = null
-            var stats: String? = null
-        }
+        var pokemon = mutableListOf<PokemonData>()
     }
 
     class EventPokestop {
@@ -230,6 +224,15 @@ class SocketServer {
         var cp: Int? = null
         var iv: Int? = null
         var stats: String? = null
+        var individualStamina: Int? = null
+        var individualAttack: Int? = null
+        var individualDefense: Int? = null
+        var creationTimeMs: Long? = null
+        var move1: String? = null
+        var move2: String? = null
+        var deployedFortId: String? = null
+        var stamina: Int? = null
+        var maxStamina: Int? = null
     }
 
     class EventReleasePokemon {

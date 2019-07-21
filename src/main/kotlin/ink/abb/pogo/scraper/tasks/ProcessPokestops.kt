@@ -8,35 +8,43 @@
 
 package ink.abb.pogo.scraper.tasks
 
-import com.pokegoapi.api.map.fort.Pokestop
+import ink.abb.pogo.api.cache.Pokestop
 import ink.abb.pogo.scraper.Bot
 import ink.abb.pogo.scraper.Context
 import ink.abb.pogo.scraper.Settings
 import ink.abb.pogo.scraper.Task
 import ink.abb.pogo.scraper.util.Log
+import ink.abb.pogo.scraper.util.map.distance
+import ink.abb.pogo.scraper.util.pokemon.distance
+import ink.abb.pogo.scraper.util.map.inRangeForLuredPokemon
 import java.util.*
 import java.util.concurrent.TimeUnit
 
 /**
  * Task that handles catching pokemon, activating stops, and walking to a new target.
  */
-class ProcessPokestops(var pokestops: MutableCollection<Pokestop>) : Task {
+class ProcessPokestops(var pokestops: List<Pokestop>) : Task {
 
     val refetchTime = TimeUnit.SECONDS.toMillis(30)
     var lastFetch: Long = 0
 
     private val lootTimeouts = HashMap<String, Long>()
     var startPokestop: Pokestop? = null
+
     override fun run(bot: Bot, ctx: Context, settings: Settings) {
-        if (lastFetch + refetchTime < bot.api.currentTimeMillis() && settings.allowLeaveStartArea) {
+        var writeCampStatus = false
+        if (lastFetch + refetchTime < bot.api.currentTimeMillis()) {
+            writeCampStatus = true
             lastFetch = bot.api.currentTimeMillis()
-            try {
-                val newStops = ctx.api.map.mapObjects.pokestops
-                if (newStops.size > 0) {
-                    pokestops = newStops
+            if (settings.allowLeaveStartArea) {
+                try {
+                    val newStops = ctx.api.map.getPokestops(ctx.api.latitude, ctx.api.longitude, 9)
+                    if (newStops.size > 0) {
+                        pokestops = newStops
+                    }
+                } catch (e: Exception) {
+                    // ignored failed request
                 }
-            } catch (e: Exception) {
-                // ignored failed request
             }
         }
         val sortedPokestops = pokestops.sortedWith(Comparator { a, b ->
@@ -47,14 +55,21 @@ class ProcessPokestops(var pokestops: MutableCollection<Pokestop>) : Task {
 
         if (settings.lootPokestop) {
             val loot = LootOneNearbyPokestop(sortedPokestops, lootTimeouts)
-            bot.task(loot)
+            try {
+                bot.task(loot)
+            } catch (e: Exception) {
+                ctx.pauseWalking.set(false)
+            }
         }
-        if (settings.campLurePokestop > 0 && settings.catchPokemon) {
+
+        if (settings.campLurePokestop > 0 && !ctx.pokemonInventoryFullStatus.get() && settings.catchPokemon) {
             val luresInRange = sortedPokestops.filter {
                 it.inRangeForLuredPokemon() && it.fortData.hasLureInfo()
-            }.size
-            if (luresInRange >= settings.campLurePokestop) {
-                Log.green("$luresInRange lure(s) in range, pausing")
+            }
+            if (luresInRange.size >= settings.campLurePokestop) {
+                if (writeCampStatus) {
+                    Log.green("${luresInRange.size} lure(s) in range, pausing")
+                }
                 return
             }
         }

@@ -9,8 +9,8 @@
 package ink.abb.pogo.scraper
 
 import com.google.common.util.concurrent.AtomicDouble
-import com.pokegoapi.api.PokemonGo
-import com.pokegoapi.api.player.PlayerProfile
+import ink.abb.pogo.api.PoGoApi
+import com.google.maps.GeoApiContext
 import ink.abb.pogo.scraper.gui.SocketServer
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicBoolean
@@ -18,8 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 data class Context(
-        val api: PokemonGo,
-        val profile: PlayerProfile,
+        val api: PoGoApi,
         val lat: AtomicDouble,
         val lng: AtomicDouble,
 
@@ -27,15 +26,22 @@ data class Context(
         val startTime: LocalDateTime,
         val pokemonStats: Pair<AtomicInteger, AtomicInteger>,
         val luredPokemonStats: AtomicInteger,
+        val pokestops: AtomicInteger,
         val itemStats: Pair<AtomicInteger, AtomicInteger>,
+        var walkingSpeed: AtomicDouble,
 
         val blacklistedEncounters: MutableSet<Long>,
         val server: SocketServer,
 
-        val pokemonInventoryFullStatus: Pair<AtomicBoolean, AtomicBoolean>,
+        val pokemonInventoryFullStatus: AtomicBoolean = AtomicBoolean(false),
+
+        var restApiPassword: String,
+        var s2Cache: MutableMap<String, Double>,
+        var restApiToken: String = "",
 
         val walking: AtomicBoolean = AtomicBoolean(false),
 
-        val pauseWalking: AtomicBoolean = AtomicBoolean(false)
+        val pauseWalking: AtomicBoolean = AtomicBoolean(false),
 
+        val geoApiContext: GeoApiContext?
 )

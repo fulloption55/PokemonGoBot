@@ -77,7 +77,9 @@ config.properties
 .DS_Store
 
 # exported file
-export_*.csv
+export_*.*
 
 bot-settings/
 logs/
+
+altitude_cache.json

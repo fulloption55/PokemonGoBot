@@ -1,10 +1,12 @@
+# THIS BOT IS DEFUNCT AND NOT MAINTAINED
+
+## DO NOT ATTEMPT TO USE IT, ARCHIVE ONLY
+
 # Pokemon Go Bot
 
 [![Build Status](https://travis-ci.org/jabbink/PokemonGoBot.svg?branch=develop)](https://travis-ci.org/jabbink/PokemonGoBot)
 
 ## Welcome to _the_ Pokemon Go Bot
-
-[Join our Discord](https://discord.gg/7Dr84MT)
 
 ## FAQ
 
@@ -16,7 +18,7 @@ Before opening an issue or explaining your problem on Discord, please refer to t
 
 ### Screenshot
 
-[![GUI Screenshot](http://pogo.abb.ink/img/gui-screenshot-01.png)](https://github.com/jabbink/PokemonGoBot/blob/gh-pages/README.md)
+[![GUI Screenshot](http://ui.pogobot.club/img/gui-screenshot-01.png)](https://github.com/jabbink/PokemonGoBot/blob/gh-pages/README.md)
 
 ## Features
 
@@ -34,3 +36,7 @@ As the name says, the `develop` branch is for developing where we'll add new fea
 # Donations
 
 If you really like this bot and would like to donate, you can send Bitcoin donations to **1PoGoboTzD9jS43qrQYogMFW6nmNfK1BGi**
+
+If you rather use PayPal, please click here:
+
+[![Donate via PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=B2ZM2WREK7B32)

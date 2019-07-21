@@ -1,4 +1,4 @@
-/*
+/**
  * Pokemon Go Bot  Copyright (C) 2016  PokemonGoBot-authors (see authors.md for more information)
  * This program comes with ABSOLUTELY NO WARRANTY;
  * This is free software, and you are welcome to redistribute it under certain conditions.
@@ -8,12 +8,17 @@
 
 package ink.abb.pogo.scraper
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import POGOProtos.Enums.PokemonIdOuterClass.PokemonId
 import POGOProtos.Inventory.Item.ItemIdOuterClass.ItemId
-import com.pokegoapi.google.common.geometry.S2LatLng
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.google.common.geometry.S2LatLng
 import ink.abb.pogo.scraper.util.Log
-import ink.abb.pogo.scraper.util.credentials.*
+import ink.abb.pogo.scraper.util.credentials.Credentials
+import ink.abb.pogo.scraper.util.credentials.GoogleAutoCredentials
+import ink.abb.pogo.scraper.util.credentials.GoogleCredentials
+import ink.abb.pogo.scraper.util.credentials.PtcCredentials
+import ink.abb.pogo.scraper.util.directions.RouteProviderEnum
+import ink.abb.pogo.scraper.util.directions.isValidRouteProvider
 import java.io.BufferedReader
 import java.io.FileOutputStream
 import java.io.FileReader
@@ -32,6 +37,9 @@ class SettingsParser(val properties: Properties) {
                 timerWalkToStartPokestop = getPropertyIfSet("Set Timer to return the first Pokestop (minutes)", "timer_walk_to_start_pokestop", defaults.timerWalkToStartPokestop, String::toLong),
                 latitude = getPropertyOrDie("Starting Latitude", "latitude", String::toDouble),
                 longitude = getPropertyOrDie("Starting Longitude", "longitude", String::toDouble),
+                saveLocationOnShutdown = getPropertyIfSet("Save last location when the bot stop", "save_location_on_shutdown", defaults.saveLocationOnShutdown, String::toBoolean),
+                savedLatitude = getPropertyIfSet("Saved start Latitude", "saved_latitude", defaults.savedLatitude, String::toDouble),
+                savedLongitude = getPropertyIfSet("Saved start Longitude", "saved_longitude", defaults.savedLongitude, String::toDouble),
 
                 credentials = if (properties.getProperty("username", "").isEmpty()) {
                     GoogleCredentials(properties.getProperty("token", ""))
@@ -41,9 +49,19 @@ class SettingsParser(val properties: Properties) {
                     PtcCredentials(properties.getProperty("username"), getPasswordProperty())
                 },
 
+                proxyServer = getPropertyIfSet("Proxy server to be used by the bot", "proxy_server", defaults.proxyServer, String::toString),
+                proxyPort = getPropertyIfSet("Proxy server port to be used by the bot", "proxy_port", defaults.proxyPort, String::toInt),
+                proxyType = getPropertyIfSet("Type of the proxy server (HTTP/SOCKS/DIRECT)", "proxy_type", defaults.proxyType, String::toString),
+                proxyUsername = getPropertyIfSet("Username for the proxy server", "proxy_username", defaults.proxyUsername, String::toString),
+                proxyPassword = getPropertyIfSet("Password for the proxy server", "proxy_password", defaults.proxyPassword, String::toString),
+
                 speed = getPropertyIfSet("Speed", "speed", defaults.speed, String::toDouble),
-                followStreets = getPropertyIfSet("Should the bot follow the streets (true) or just go directly to pokestops/waypoints", "follow_streets", defaults.followStreets, String::toBoolean),
+                randomSpeedRange = getPropertyIfSet("Define random speed range around the original speed", "random_speed_range", defaults.randomSpeedRange, String::toDouble),
+                followStreets = getPropertyIfSet("Should the bot follow the streets", "follow_streets", defaults.followStreets.map { it.name }.joinToString(","), String::toString).split(",").filter { it.isNotBlank() && isValidRouteProvider(it) }.map { RouteProviderEnum.valueOf(it) },
+                mapzenApiKey = getPropertyIfSet("If you use MAPZEN as route provider, you can use a Mapzen Turn by Turn API key", "mapzen_api_key", defaults.mapzenApiKey, String::toString),
+                googleApiKey = getPropertyIfSet("If you use GOOGLE as route provider, you must use a Google API key", "google_api_key", defaults.googleApiKey, String::toString),
                 dropItems = dropItems,
+                itemDropDelay = getPropertyIfSet("Delay between each drop of items", "item_drop_delay", defaults.itemDropDelay, String::toLong),
                 groupItemsByType = getPropertyIfSet("Should the items that are kept be grouped by type (keep best from same type)", "group_items_by_type", defaults.groupItemsByType, String::toBoolean),
 
                 uselessItems = mapOf(
@@ -67,7 +85,10 @@ class SettingsParser(val properties: Properties) {
                 campLurePokestop = getPropertyIfSet("Camp around x lured pokestops", "camp_lure_pokestop", defaults.campLurePokestop, String::toInt),
                 desiredCatchProbability = getPropertyIfSet("Desired chance to catch a Pokemon with 1 ball", "desired_catch_probability", defaults.desiredCatchProbability, String::toDouble),
                 desiredCatchProbabilityUnwanted = getPropertyIfSet("Desired probability to catch unwanted Pokemon (obligatory_transfer; low IV; low CP)", "desired_catch_probability_unwanted", defaults.desiredCatchProbabilityUnwanted, String::toDouble),
+                randomBallThrows = getPropertyIfSet("Randomize Ball Throwing", "random_ball_throws", defaults.randomBallThrows, String::toBoolean),
+                waitBetweenThrows = getPropertyIfSet("Waiting between throws", "wait_between_throws", defaults.waitBetweenThrows, String::toBoolean),
                 autotransfer = getPropertyIfSet("Autotransfer", "autotransfer", defaults.autotransfer, String::toBoolean),
+                autotransferTimeDelay = getPropertyIfSet("Delay between each transfer", "autotransfer_time_delay", defaults.autotransferTimeDelay, String::toLong),
                 keepPokemonAmount = getPropertyIfSet("minimum keep pokemon amount", "keep_pokemon_amount", defaults.keepPokemonAmount, String::toInt),
                 maxPokemonAmount = getPropertyIfSet("maximum keep pokemon amount", "max_pokemon_amount", defaults.maxPokemonAmount, String::toInt),
                 displayKeepalive = getPropertyIfSet("Display Keepalive Coordinates", "display_keepalive", defaults.displayKeepalive, String::toBoolean),
@@ -83,7 +104,7 @@ class SettingsParser(val properties: Properties) {
 
                 sortByIv = getPropertyIfSet("Sort by IV first instead of CP", "sort_by_iv", defaults.sortByIv, String::toBoolean),
 
-                alwaysCurve = getPropertyIfSet("Always throw curveballs", "always_curve", defaults.alwaysCurve, String::toBoolean),
+                desiredCurveRate = getPropertyIfSet("Define curved balls probability", "desired_curve_rate", defaults.desiredCurveRate, String::toDouble),
 
                 neverUseBerries = getPropertyIfSet("Never use berries", "never_use_berries", defaults.neverUseBerries, String::toBoolean),
 
@@ -95,17 +116,43 @@ class SettingsParser(val properties: Properties) {
 
                 transferCpThreshold = getPropertyIfSet("Minimum CP to keep a pokemon", "transfer_cp_threshold", defaults.transferCpThreshold, String::toInt),
 
+                transferCpMinThreshold = getPropertyIfSet("Minimum CP % in relation to max CP of pokemon to your current trainer lvl to keep pokemon", "transfer_cp_min_threshold", defaults.transferCpMinThreshold, String::toInt),
+
                 transferIvThreshold = getPropertyIfSet("Minimum IV percentage to keep a pokemon", "transfer_iv_threshold", defaults.transferIvThreshold, String::toInt),
 
                 ignoredPokemon = getPropertyIfSet("Never transfer these Pokemon", "ignored_pokemon", defaults.ignoredPokemon.map { it.name }.joinToString(","), String::toString).split(",").filter { it.isNotBlank() }.map { PokemonId.valueOf(it) },
 
                 obligatoryTransfer = getPropertyIfSet("list of pokemon you always want to transfer regardless of CP", "obligatory_transfer", defaults.obligatoryTransfer.map { it.name }.joinToString(","), String::toString).split(",").filter { it.isNotBlank() }.map { PokemonId.valueOf(it) },
 
+                evolveBeforeTransfer = getPropertyIfSet("list of pokemon you always want to evolve before transfer to maximize XP", "evolve_before_transfer", defaults.evolveBeforeTransfer.map { it.name }.joinToString(","), String::toString).split(",").filter { it.isNotBlank() }.map { PokemonId.valueOf(it) },
+
+                neverCatchPokemon = getPropertyIfSet("list of pokemon you NEVER want to catch", "never_catch_pokemon", defaults.neverCatchPokemon.map { it.name }.joinToString(","), String::toString).split(",").filter { it.isNotBlank() }.map { PokemonId.valueOf(it) },
+
+                evolveStackLimit = getPropertyIfSet("The stack of evolves needed to pop lucky egg and evolve all", "evolve_stack_limit", defaults.evolveStackLimit, String::toInt),
+
+                useLuckyEgg = getPropertyIfSet("Use lucky egg before evolves", "use_lucky_egg", defaults.useLuckyEgg, String::toInt),
+
+                evolveTimeDelay = getPropertyIfSet("Set time delay between evolutions", "evolve_time_delay", defaults.evolveTimeDelay, String::toLong),
+
                 export = getPropertyIfSet("Export on Profile Update", "export", defaults.export, String::toString),
 
                 guiPortSocket = getPropertyIfSet("Port where the socketserver should listen", "gui_port_socket", defaults.guiPortSocket, String::toInt),
 
-                initialMapSize = getPropertyIfSet("Initial map size (S2 tiles) to fetch", "initial_map_size", defaults.initialMapSize, String::toInt)
+                restApiPassword = getPropertyIfSet("REST API password for the bot", "rest_api_password", defaults.restApiPassword, String::toString),
+
+                initialMapSize = getPropertyIfSet("Initial map size (S2 tiles) to fetch", "initial_map_size", defaults.initialMapSize, String::toInt),
+
+                waitChance = getPropertyIfSet("Chance to wait on a pokestop", "wait_chance", defaults.waitChance, String::toDouble),
+
+                waitTimeMin = getPropertyIfSet("Minimal time to wait", "wait_time_min", defaults.waitTimeMin, String::toInt),
+
+                waitTimeMax = getPropertyIfSet("Maximum time to wait", "wait_time_max", defaults.waitTimeMax, String::toInt),
+
+                botTimeoutAfterMinutes = getPropertyIfSet("Bot times out after X minutes and waits", "bot_timeout_after_minutes", defaults.botTimeoutAfterMinutes, String::toInt),
+                botTimeoutAfterCatchingPokemon = getPropertyIfSet("Bot times out after X minutes and waits", "bot_timeout_after_catching_pokemon", defaults.botTimeoutAfterCatchingPokemon, String::toInt),
+                botTimeoutAfterVisitingPokestops = getPropertyIfSet("Bot times out after X minutes and waits", "bot_timeout_after_visiting_pokestops", defaults.botTimeoutAfterVisitingPokestops, String::toInt),
+
+                buddyPokemon = getPropertyIfSet("Desired buddy pokemon", "buddy_pokemon", defaults.buddyPokemon, String::toString)
         )
     }
 
@@ -121,7 +168,7 @@ class SettingsParser(val properties: Properties) {
             System.exit(1)
         }
 
-        var result: T?
+        val result: T?
         try {
             result = conversion(properties.getProperty(property))
         } catch (e: Exception) {
@@ -150,19 +197,33 @@ class SettingsParser(val properties: Properties) {
     }
 }
 
-@JsonIgnoreProperties("startingLocation", "name", ignoreUnknown = true)
+@JsonIgnoreProperties("startingLocation", ignoreUnknown = true)
 data class Settings(
         var name: String = "",
 
-        val latitude: Double,
-        val longitude: Double,
+        var latitude: Double,
+        var longitude: Double,
+        var savedLatitude: Double = 0.0,
+        var savedLongitude: Double = 0.0,
+        val saveLocationOnShutdown: Boolean = true,
 
         val startingLocation: S2LatLng = S2LatLng.fromDegrees(latitude, longitude),
         val credentials: Credentials,
+
+        val proxyServer: String = "",
+        val proxyPort: Int = -1,
+        var proxyType: String = "SOCKS",
+        var proxyUsername: String = "",
+        var proxyPassword: String = "",
+
         val speed: Double = 2.8,
-        val followStreets: Boolean = false,
-        val groupItemsByType : Boolean = false,
+        val randomSpeedRange: Double = 0.0,
+        val followStreets: List<RouteProviderEnum> = emptyList(),
+        val mapzenApiKey: String = "",
+        val googleApiKey: String = "",
+        val groupItemsByType: Boolean = false,
         val dropItems: Boolean = true,
+        val itemDropDelay: Long = -1,
         val uselessItems: Map<ItemId, Int> = mapOf(
                 Pair(ItemId.ITEM_REVIVE, 20),
                 Pair(ItemId.ITEM_MAX_REVIVE, 10),
@@ -178,7 +239,6 @@ data class Settings(
                 Pair(ItemId.ITEM_LUCKY_EGG, -1),
                 Pair(ItemId.ITEM_INCENSE_ORDINARY, -1),
                 Pair(ItemId.ITEM_TROY_DISK, -1)
-
         ),
 
         val profileUpdateTimer: Long = 60,
@@ -188,6 +248,9 @@ data class Settings(
         val desiredCatchProbability: Double = 0.4,
         val desiredCatchProbabilityUnwanted: Double = 0.0,
         val autotransfer: Boolean = true,
+        val autotransferTimeDelay: Long = -1,
+        val randomBallThrows: Boolean = false,
+        val waitBetweenThrows: Boolean = false,
         val keepPokemonAmount: Int = 1,
         val maxPokemonAmount: Int = -1,
 
@@ -202,24 +265,43 @@ data class Settings(
         val autoFillIncubator: Boolean = true,
 
         val sortByIv: Boolean = false,
-        val alwaysCurve: Boolean = false,
+        val desiredCurveRate: Double = 0.0,
         val neverUseBerries: Boolean = true,
         val allowLeaveStartArea: Boolean = false,
         val spawnRadius: Int = -1,
         val banSpinCount: Int = 0,
         val transferCpThreshold: Int = 400,
+        val transferCpMinThreshold: Int = -1,
         val transferIvThreshold: Int = 80,
         val ignoredPokemon: List<PokemonId> = listOf(PokemonId.EEVEE, PokemonId.MEWTWO, PokemonId.CHARMANDER),
 
         val obligatoryTransfer: List<PokemonId> = listOf(PokemonId.DODUO, PokemonId.RATTATA, PokemonId.CATERPIE, PokemonId.PIDGEY),
 
+        val evolveBeforeTransfer: List<PokemonId> = listOf(PokemonId.CATERPIE, PokemonId.RATTATA, PokemonId.WEEDLE, PokemonId.PIDGEY),
+        val neverCatchPokemon: List<PokemonId> = listOf(),
+        val evolveStackLimit: Int = 100,
+        val useLuckyEgg: Int = 1,
+        val evolveTimeDelay: Long = 300,
+
         val export: String = "",
 
         val guiPortSocket: Int = 8001,
 
+        var restApiPassword: String = "",
+
         var initialMapSize: Int = 9,
 
-        val version: String = Settings.version
+        val version: String = Settings.version,
+
+        val waitChance: Double = 0.0,
+        val waitTimeMin: Int = 0,
+        val waitTimeMax: Int = 0,
+
+        val botTimeoutAfterMinutes: Int = -1,
+        val botTimeoutAfterCatchingPokemon: Int = -1,
+        val botTimeoutAfterVisitingPokestops: Int = -1,
+
+        val buddyPokemon: String = ""
 ) {
     fun withName(name: String): Settings {
         this.name = name
@@ -260,13 +342,13 @@ data class Settings(
 
         init {
             val versionProperties = Properties()
-            try {
+            version = try {
                 SettingsParser::class.java.getResourceAsStream("version.properties").use {
                     versionProperties.load(it)
                 }
-                version = versionProperties["version"].toString()
+                versionProperties["version"].toString()
             } catch (e: Exception) {
-                version = ""
+                ""
             }
         }
     }
